@@ -14,92 +14,57 @@ pub enum PerformanceEntry {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-pub struct PerformanceResourceTiming {
-    // base
-    initiatorType: String,
-    name: String,
-    nextHopProtocol: String,
-    duration: f64,
-    startTime: f64,
-
-    // size
-    transferSize: i32,
-    encodedBodySize: i32,
-    decodedBodySize: i32,
-
-    // timing
-    redirectStart: f64,
-    redirectEnd: f64,
-    fetchStart: f64,
-    domainLookupStart: f64,
-    domainLookupEnd: f64,
-    connectStart: f64,
-    connectEnd: f64,
-    requestStart: f64,
-    responseStart: f64,
-    responseEnd: f64,
-    secureConnectionStart: f64,
-    workerStart: f64,
+pub struct EntryBase {
+    pub name: String,
+    pub duration: f64,
+    pub startTime: f64,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-pub struct PerformancePaintTiming {
-//    entryType: String,
-    name: String,
-    startTime: f64,
-    duration: f64,
+pub struct PerformanceResourceTiming {
+    #[serde(flatten)]
+    pub base: EntryBase,
+
+    pub initiatorType: String,
+    pub nextHopProtocol: String,
+
+    // size
+    pub transferSize: i32,
+    pub encodedBodySize: i32,
+    pub decodedBodySize: i32,
+
+    // timing
+    pub redirectStart: f64,
+    pub redirectEnd: f64,
+    pub fetchStart: f64,
+    pub domainLookupStart: f64,
+    pub domainLookupEnd: f64,
+    pub connectStart: f64,
+    pub connectEnd: f64,
+    pub requestStart: f64,
+    pub responseStart: f64,
+    pub responseEnd: f64,
+    pub secureConnectionStart: f64,
+    pub workerStart: f64,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct PerformanceNavigationTiming {
-    // base
-    initiatorType: String,
-    name: String,
-    nextHopProtocol: String,
-    duration: f64,
-    startTime: f64,
-
-    // size
-    transferSize: i32,
-    encodedBodySize: i32,
-    decodedBodySize: i32,
-
-    // timing
-    redirectStart: f64,
-    redirectEnd: f64,
-    fetchStart: f64,
-    domainLookupStart: f64,
-    domainLookupEnd: f64,
-    connectStart: f64,
-    connectEnd: f64,
-    requestStart: f64,
-    responseStart: f64,
-    responseEnd: f64,
-    secureConnectionStart: f64,
-    workerStart: f64,
+    #[serde(flatten)]
+    pub resource: PerformanceResourceTiming,
 
     // dom event
-    domInteractive: f64,
-    domContentLoadedEventStart: f64,
-    domContentLoadedEventEnd: f64,
-    domComplete: f64,
-    loadEventStart: f64,
-    loadEventEnd: f64,
-    unloadEventStart: f64,
-    unloadEventEnd: f64,
-    redirectCount: i32,
+    pub domInteractive: f64,
+    pub domContentLoadedEventStart: f64,
+    pub domContentLoadedEventEnd: f64,
+    pub domComplete: f64,
+    pub loadEventStart: f64,
+    pub loadEventEnd: f64,
+    pub unloadEventStart: f64,
+    pub unloadEventEnd: f64,
+    pub redirectCount: i32,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
-pub struct PerformanceMark {
-    name: String,
-    startTime: f64,
-    duration: f64,
-}
-
-#[derive(Deserialize, Serialize, Debug)]
-pub struct PerformanceMeasure {
-    name: String,
-    startTime: f64,
-    duration: f64,
-}
+pub type PerformanceMark = EntryBase;
+pub type PerformanceMeasure = EntryBase;
+pub type PerformancePaintTiming = EntryBase;

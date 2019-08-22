@@ -2,6 +2,7 @@ use crate::aggregator::Aggregator;
 use crate::performance_entry::{PerformanceEntry, PerformanceNavigationTiming, PerformanceResourceTiming, PerformanceMeasure, PerformanceMark, PerformancePaintTiming, EntryBase};
 use std::collections::HashMap;
 use prometheus::Result;
+use prometheus::core::Collector;
 
 pub const RESOURCE_DURATION_METRIC: &'static str = "resource_duration_milliseconds";
 pub const RESOURCE_DURATION_HELP: &'static str = "Duration of frontend resources in milliseconds.";

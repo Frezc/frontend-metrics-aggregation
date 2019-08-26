@@ -1,25 +1,28 @@
-use prometheus::{Registry, IntCounter, TextEncoder, Encoder, IntCounterVec, HistogramVec, Opts, Result, Histogram, HistogramOpts};
+use prometheus::{Registry, IntCounter, TextEncoder, Encoder, IntCounterVec, GaugeVec, HistogramVec, Opts, Result, Histogram, HistogramOpts, CounterVec, Counter};
 use std::collections::HashMap;
+use prometheus::core::Collector;
+use std::sync::Arc;
 
 pub const DEFAULT_BUCKETS: [f64; 5] = [100f64, 200f64, 400f64, 800f64, 1600f64];
 
 pub struct Aggregator {
     pub registry: Registry,
-    // counter & histogram use Atomic* internally, so we need not wrap for multi-threads
-    pub counters: HashMap<String, IntCounterVec>,
+    pub int_counters: HashMap<String, IntCounterVec>,
+    pub counters: HashMap<String, CounterVec>,
     pub histograms: HashMap<String, HistogramVec>,
 }
 
 impl Default for Aggregator {
     fn default() -> Self {
-        let counter = IntCounter::new("example_count", "This is a example counter").unwrap();
         Aggregator {
             registry: Registry::new(),
+            int_counters: HashMap::new(),
             counters: HashMap::new(),
             histograms: HashMap::new(),
         }
     }
 }
+
 
 impl Aggregator {
     pub fn gather_str(&self) -> String {
@@ -30,9 +33,23 @@ impl Aggregator {
         String::from_utf8(buffer).unwrap()
     }
 
-    pub fn get_counter_with_labels(&mut self, metric_name: &str, help: &str, labels: &HashMap<&str, &str>) -> Result<IntCounter> {
-        if !self.counters.contains_key(metric_name) {
+    pub fn get_int_counter_with_labels(&mut self, metric_name: &str, help: &str, labels: &HashMap<&str, &str>) -> Result<IntCounter> {
+        if !self.int_counters.contains_key(metric_name) {
             let re = IntCounterVec::new(Opts::new(metric_name, help), &labels.keys().map(|&k| k).collect::<Vec<&str>>())?;
+            self.registry.register(Box::new(re.clone())).unwrap();
+            self.int_counters.insert(metric_name.to_string(), re);
+        }
+        let counter = self.int_counters.get(metric_name).unwrap();
+        Ok(counter.with(labels))
+    }
+
+    pub fn get_int_counter(&mut self, metric_name: &str, help: &str) -> Result<IntCounter> {
+        self.get_int_counter_with_labels(metric_name, help, &HashMap::new())
+    }
+
+    pub fn get_counter_with_labels(&mut self, metric_name: &str, help: &str, labels: &HashMap<&str, &str>) -> Result<Counter> {
+        if !self.counters.contains_key(metric_name) {
+            let re = CounterVec::new(Opts::new(metric_name, help), &labels.keys().map(|&k| k).collect::<Vec<&str>>())?;
             self.registry.register(Box::new(re.clone())).unwrap();
             self.counters.insert(metric_name.to_string(), re);
         }
@@ -40,7 +57,7 @@ impl Aggregator {
         Ok(counter.with(labels))
     }
 
-    pub fn get_counter(&mut self, metric_name: &str, help: &str) -> Result<IntCounter> {
+    pub fn get_counter(&mut self, metric_name: &str, help: &str) -> Result<Counter> {
         self.get_counter_with_labels(metric_name, help, &HashMap::new())
     }
 

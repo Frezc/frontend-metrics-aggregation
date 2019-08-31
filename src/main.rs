@@ -3,7 +3,7 @@ mod aggregator;
 mod resource_aggregator;
 mod custom_metrics;
 
-use actix_web::{Responder, HttpResponse, HttpServer, App, web};
+use actix_web::{Responder, HttpResponse, HttpServer, App, web, HttpRequest, error, Error};
 use performance_entry::*;
 use aggregator::Aggregator;
 use std::sync::{Mutex, Arc};
@@ -11,6 +11,8 @@ use crate::resource_aggregator::ResourceAggregator;
 use std::collections::HashMap;
 use crate::custom_metrics::Metric;
 use std::ops::Deref;
+use futures::{Future, Stream};
+use actix_web::web::BytesMut;
 
 type AggState = web::Data<Arc<Mutex<Aggregator>>>;
 
@@ -21,6 +23,7 @@ fn main() {
             .register_data(web::Data::new(Arc::clone(&data)))
             .route("/", web::get().to(index))
             .route("/resources", web::post().to(resources))
+            .route("/custom_metrics", web::post().to_async(custom_metrics))
             .route("/metrics", web::get().to(metrics))
     })
         .bind("0.0.0.0:8080")
@@ -57,12 +60,43 @@ impl AsStr for HashMap<String, String> {
     }
 }
 
-fn custom_metrics(metrics: web::Json<Vec<Metric>>, agg: AggState) -> impl Responder {
-    for metric in metrics.into_inner() {
-        match metric {
-            Metric::Counter(m) => agg.lock().unwrap().get_counter_with_labels(&m.metric, &m.help, &m.labels.as_str()).unwrap().inc_by(m.value),
-            Metric::Histogram(m) => agg.lock().unwrap().get_histogram_with_buckets_labels(&m.metric, &m.help, m.buckets, &m.labels.as_str()).unwrap().observe(m.value)
-        }
-    }
-    HttpResponse::Ok()
+const MAX_SIZE: usize = 262_144; // max payload size is 256k
+
+fn custom_metrics(payload: web::Payload, agg: AggState) -> impl Future<Item = HttpResponse, Error = Error> {
+
+    payload
+        .from_err()
+        .fold(BytesMut::new(), move |mut body, chunk| {
+            // limit max size of in-memory payload
+            if (body.len() + chunk.len()) > MAX_SIZE {
+                Err(error::ErrorBadRequest("overflow"))
+            } else {
+                body.extend_from_slice(&chunk);
+                Ok(body)
+            }
+        })
+        .and_then(move |body| {
+            let metrics = serde_json::from_slice::<Vec<Metric>>(&body)?;
+            for metric in metrics {
+                match metric {
+                    Metric::COUNTER(m) => {
+                        for mv in m.metrics {
+                            agg.lock()
+                                .unwrap()
+                                .get_counter_with_labels(
+                                    &m.name,
+                                    &m.help,
+                                    &mv.labels.as_str()
+                                )
+                                .unwrap()
+                                .inc_by(mv.value)
+                        }
+                    },
+                    Metric::HISTOGRAM(m) => {
+                        unimplemented!()
+                    }
+                }
+            }
+            Ok(HttpResponse::Ok().finish())
+        })
 }

@@ -22,7 +22,7 @@ fn main() {
         App::new()
             .register_data(web::Data::new(Arc::clone(&data)))
             .route("/", web::get().to(index))
-            .route("/resources", web::post().to(resources))
+            .route("/resources", web::post().to_async(resources))
             .route("/custom_metrics", web::post().to_async(custom_metrics))
             .route("/metrics", web::get().to(metrics))
     })
@@ -37,9 +37,13 @@ fn index(agg: AggState) -> impl Responder {
     HttpResponse::Ok().body("This is a frontend metrics aggregator for prometheus")
 }
 
-fn resources(entries: web::Json<Vec<PerformanceEntry>>, agg: AggState) -> impl Responder {
-    agg.lock().unwrap().receive_entries(&entries);
-    HttpResponse::Ok()
+fn resources(payload: web::Payload, agg: AggState) -> impl Future<Item = HttpResponse, Error = Error> {
+    read_payload(payload)
+        .and_then(move |body| {
+            let entries = serde_json::from_slice::<Vec<PerformanceEntry>>(&body)?;
+            agg.lock().unwrap().receive_entries(&entries);
+            Ok(HttpResponse::Ok().finish())
+        })
 }
 
 fn metrics(agg: AggState) -> String {
@@ -63,18 +67,7 @@ impl AsStr for HashMap<String, String> {
 const MAX_SIZE: usize = 262_144; // max payload size is 256k
 
 fn custom_metrics(payload: web::Payload, agg: AggState) -> impl Future<Item = HttpResponse, Error = Error> {
-
-    payload
-        .from_err()
-        .fold(BytesMut::new(), move |mut body, chunk| {
-            // limit max size of in-memory payload
-            if (body.len() + chunk.len()) > MAX_SIZE {
-                Err(error::ErrorBadRequest("overflow"))
-            } else {
-                body.extend_from_slice(&chunk);
-                Ok(body)
-            }
-        })
+    read_payload(payload)
         .and_then(move |body| {
             let metrics = serde_json::from_slice::<Vec<Metric>>(&body)?;
             for metric in metrics {
@@ -98,5 +91,19 @@ fn custom_metrics(payload: web::Payload, agg: AggState) -> impl Future<Item = Ht
                 }
             }
             Ok(HttpResponse::Ok().finish())
+        })
+}
+
+fn read_payload(payload: web::Payload) -> impl Future<Item=BytesMut, Error = Error> {
+    payload
+        .from_err()
+        .fold(BytesMut::new(), move |mut body, chunk| {
+            // limit max size of in-memory payload
+            if (body.len() + chunk.len()) > MAX_SIZE {
+                Err(error::ErrorBadRequest("overflow"))
+            } else {
+                body.extend_from_slice(&chunk);
+                Ok(body)
+            }
         })
 }
